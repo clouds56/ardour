@@ -30,6 +30,7 @@
 #include "ardour/audio_track.h"
 #include "ardour/midi_port.h"
 #include "ardour/midi_track.h"
+#include "ardour/monitor_return.h"
 #include "ardour/profile.h"
 #include "ardour/region.h"
 #include "ardour/session.h"
@@ -291,6 +292,9 @@ RecorderUI::set_session (Session* s)
 	_session->RecordStateChanged.connect (_session_connections, invalidator (*this), boost::bind (&RecorderUI::update_sensitivity, this), gui_context());
 	_session->UpdateRouteRecordState.connect (_session_connections, invalidator (*this), boost::bind (&RecorderUI::update_recordstate, this), gui_context());
 
+	MonitorPort& mp (AudioEngine::instance()->monitor_port ());
+	mp.MonitorInputChanged.connect (_session_connections, invalidator (*this), boost::bind (&RecorderUI::update_monitorstate, this, _1, _2), gui_context());
+
 	update_title ();
 	initial_track_display ();
 	gui_extents_changed ();
@@ -356,10 +360,24 @@ RecorderUI::update_recordstate ()
 }
 
 void
+RecorderUI::update_monitorstate (std::string pn, bool en)
+{
+	InputPortMap::iterator im = _input_ports.find (pn);
+	if (im != _input_ports.end()) {
+		im->second->monitor (en);
+	}
+}
+
+void
 RecorderUI::parameter_changed (string const& p)
 {
 	if (p == "input-meter-layout") {
 		start_updating ();
+	} else if (p == "use-monitor-bus") {
+		bool have_ms = Config->get_use_monitor_bus();
+		for (InputPortMap::const_iterator i = _input_ports.begin (); i != _input_ports.end (); ++i) {
+			i->second->allow_monitoring (have_ms);
+		}
 	}
 }
 
@@ -707,6 +725,23 @@ RecorderUI::spill_port (string const& p)
 }
 
 void
+RecorderUI::monitor_port (string const& p)
+{
+	if (!_session->monitor_out ()) {
+		return;
+	}
+	bool en = _input_ports[p]->monitoring ();
+
+	MonitorPort& mp (AudioEngine::instance()->monitor_port ());
+
+	if (en) {
+		mp.add_port (p);
+	} else {
+		mp.remove_port (p);
+	}
+}
+
+void
 RecorderUI::initial_track_display ()
 {
 	boost::shared_ptr<RouteList> r = _session->get_tracks ();
@@ -994,8 +1029,7 @@ RecorderUI::peak_reset ()
 bool RecorderUI::InputPort::_size_groups_initialized = false;
 
 Glib::RefPtr<Gtk::SizeGroup> RecorderUI::InputPort::_name_size_group;
-Glib::RefPtr<Gtk::SizeGroup> RecorderUI::InputPort::_spill_size_group;
-Glib::RefPtr<Gtk::SizeGroup> RecorderUI::InputPort::_button_size_group;
+Glib::RefPtr<Gtk::SizeGroup> RecorderUI::InputPort::_ctrl_size_group;
 Glib::RefPtr<Gtk::SizeGroup> RecorderUI::InputPort::_monitor_size_group;
 
 RecorderUI::InputPort::InputPort (string const& name, DataType dt, RecorderUI* parent, bool vertical)
@@ -1004,6 +1038,7 @@ RecorderUI::InputPort::InputPort (string const& name, DataType dt, RecorderUI* p
 	, _alignment (0.5, 0.5, 0, 0)
 	, _frame (vertical ? ArdourWidgets::Frame::Vertical : ArdourWidgets::Frame::Horizontal)
 	, _spill_button ("", ArdourButton::default_elements, true)
+	, _monitor_button ("", ArdourButton::just_led_default_elements, true)
 	, _name_button (name)
 	, _name_label ("", ALIGN_CENTER, ALIGN_CENTER, false)
 	, _add_button ("+")
@@ -1012,28 +1047,29 @@ RecorderUI::InputPort::InputPort (string const& name, DataType dt, RecorderUI* p
 	if (!_size_groups_initialized) {
 		_size_groups_initialized = true;
 		_name_size_group = Gtk::SizeGroup::create (Gtk::SIZE_GROUP_HORIZONTAL);
-		_spill_size_group = Gtk::SizeGroup::create (Gtk::SIZE_GROUP_HORIZONTAL);
-		_button_size_group = Gtk::SizeGroup::create (Gtk::SIZE_GROUP_VERTICAL);
+		_ctrl_size_group = Gtk::SizeGroup::create (Gtk::SIZE_GROUP_HORIZONTAL);
 		_monitor_size_group = Gtk::SizeGroup::create (Gtk::SIZE_GROUP_BOTH);
 	}
 
-	Box* box_t;
-	Box* box_c;
-	Box* box_n;
+	Box*   box_t;
+	Box*   box_n;
+	Table* ctrls = manage (new Table);
 
 	if (vertical) {
 		box_t = manage (new VBox);
-		box_c = manage (new HBox);
 		box_n = manage (new VBox);
 	} else {
 		box_t = manage (new HBox);
-		box_c = manage (new VBox);
 		box_n = manage (new VBox);
 	}
 
 	_spill_button.set_name ("generic button");
 	_spill_button.set_sizing_text(_("(none)"));
 	_spill_button.signal_clicked.connect (sigc::bind (sigc::mem_fun (*parent, &RecorderUI::spill_port), name));
+
+	_monitor_button.set_name ("generic button");
+	_monitor_button.set_sizing_text(_("Mon"));
+	_monitor_button.signal_clicked.connect (sigc::bind (sigc::mem_fun (*parent, &RecorderUI::monitor_port), name));
 
 	_add_button.set_name ("generic button");
 	_add_button.set_icon (ArdourIcon::PlusSign);
@@ -1049,9 +1085,13 @@ RecorderUI::InputPort::InputPort (string const& name, DataType dt, RecorderUI* p
 
 	setup_name ();
 
-	box_c->set_spacing (2);
-	box_c->pack_start (_spill_button, true, true);
-	box_c->pack_start (_add_button, true, true);
+	ctrls->attach (_spill_button,     0, 2, 0, 1, EXPAND|FILL, EXPAND|FILL, 1, 1);
+	if (dt == DataType::AUDIO) {
+		ctrls->attach (_add_button,     0, 1, 1, 2, SHRINK|FILL, EXPAND|FILL, 1, 1);
+		ctrls->attach (_monitor_button, 1, 2, 1, 2, SHRINK|FILL, EXPAND|FILL, 1, 1);
+	} else {
+		ctrls->attach (_add_button,     0, 2, 1, 2, EXPAND|FILL, EXPAND|FILL, 1, 1);
+	}
 
 	box_n->pack_start (_name_button, true, true);
 #if 0 // MIXBUS ?
@@ -1062,12 +1102,12 @@ RecorderUI::InputPort::InputPort (string const& name, DataType dt, RecorderUI* p
 	if (vertical) {
 		nh = 64 * UIConfiguration::instance ().get_ui_scale ();
 		box_t->pack_start (_monitor, false, false);
-		box_t->pack_start (*box_c, false, false, 1);
+		box_t->pack_start (*ctrls, false, false, 1);
 		box_t->pack_start (*box_n, false, false, 1);
 		_name_label.set_max_width_chars (9);
 	} else {
 		nh = 120 * UIConfiguration::instance ().get_ui_scale ();
-		box_t->pack_start (*box_c, false, false, 1);
+		box_t->pack_start (*ctrls, false, false, 1);
 		box_t->pack_start (*box_n, false, false, 1);
 		box_t->pack_start (_monitor, false, false);
 		_name_label.set_max_width_chars (18);
@@ -1077,13 +1117,9 @@ RecorderUI::InputPort::InputPort (string const& name, DataType dt, RecorderUI* p
 	if (!vertical) {
 		/* match width of all name labels */
 		_name_size_group->add_widget (*box_n);
-		/* match width of all spill labels */
-		_spill_size_group->add_widget (*box_c);
+		/* match width of control boxes */
+		_ctrl_size_group->add_widget (*ctrls);
 	}
-
-	/* match height of spill + name buttons */
-	_button_size_group->add_widget (_spill_button);
-	_button_size_group->add_widget (_name_button);
 
 	/* equal size for all meters + event monitors */
 	_monitor_size_group->add_widget (_monitor);
@@ -1247,6 +1283,50 @@ bool
 RecorderUI::InputPort::spilled () const
 {
 	return _spill_button.get_active ();
+}
+
+bool
+RecorderUI::InputPort::monitor (bool en)
+{
+	bool active = _monitor_button.get_active ();
+	bool act = active;
+
+	if (!en) {
+		act = false;
+	}
+
+	if (_dt != DataType::AUDIO) {
+		act = false;
+	}
+
+	if (active != act) {
+		_monitor_button.set_active (act);
+	}
+	return act;
+}
+
+void
+RecorderUI::InputPort::allow_monitoring (bool en)
+{
+	if (_dt != DataType::AUDIO) {
+		en = false;
+	}
+	if (!en && _monitor_button.get_active ()) {
+		_monitor_button.set_active (false);
+	}
+	_monitor_button.set_sensitive (en);
+}
+
+bool
+RecorderUI::InputPort::monitoring () const
+{
+	return _monitor_button.get_active ();
+}
+
+void
+RecorderUI::InputPort::update_monitoring (bool en)
+{
+	_monitor_button.set_active (en);
 }
 
 string const&

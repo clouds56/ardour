@@ -64,6 +64,7 @@ public:
 	Gtk::Window* use_own_window (bool and_fill_it);
 
 	void spill_port (std::string const&);
+	void monitor_port (std::string const&);
 	void add_track (std::string const&);
 
 private:
@@ -104,6 +105,7 @@ private:
 
 	void update_sensitivity ();
 	void update_recordstate ();
+	void update_monitorstate (std::string, bool);
 	void new_track_for_port (ARDOUR::DataType, std::string const&);
 
 	static int calc_columns (int child_width, int parent_width);
@@ -168,6 +170,9 @@ private:
 			void setup_name ();
 			bool spill (bool);
 			bool spilled () const;
+			bool monitor (bool);
+			bool monitoring () const;
+			void allow_monitoring (bool);
 			void update_rec_stat ();
 
 			ARDOUR::DataType data_type () const;
@@ -187,12 +192,14 @@ private:
 
 		private:
 			void rename_port ();
+			void update_monitoring (bool);
 
 			ARDOUR::DataType            _dt;
 			InputPortMonitor            _monitor;
 			Gtk::Alignment              _alignment;
 			ArdourWidgets::Frame        _frame;
 			ArdourWidgets::ArdourButton _spill_button;
+			ArdourWidgets::ArdourButton _monitor_button;
 			ArdourWidgets::ArdourButton _name_button;
 			Gtk::Label                  _name_label;
 			ArdourWidgets::ArdourButton _add_button;
@@ -201,8 +208,7 @@ private:
 
 			static bool                         _size_groups_initialized;
 			static Glib::RefPtr<Gtk::SizeGroup> _name_size_group;
-			static Glib::RefPtr<Gtk::SizeGroup> _spill_size_group;
-			static Glib::RefPtr<Gtk::SizeGroup> _button_size_group;
+			static Glib::RefPtr<Gtk::SizeGroup> _ctrl_size_group;
 			static Glib::RefPtr<Gtk::SizeGroup> _monitor_size_group;
 	};
 
