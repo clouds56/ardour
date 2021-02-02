@@ -3543,6 +3543,8 @@ Session::route_listen_changed (Controllable::GroupControlDisposition group_overr
 
 		if (Config->get_exclusive_solo()) {
 
+			_engine.monitor_port().clear_ports (false);
+
 			RouteGroup* rg = route->route_group ();
 			const bool group_already_accounted_for = (group_override == Controllable::ForGroup);
 
@@ -7159,6 +7161,22 @@ Session::cancel_all_solo ()
 
 	set_controls (stripable_list_to_control_list (sl, &Stripable::solo_control), 0.0, Controllable::NoGroup);
 	clear_all_solo_state (routes.reader());
+
+	_engine.monitor_port().clear_ports (false);
+}
+
+bool
+Session::listening () const
+{
+	if (_listen_cnt > 0) {
+		return true;
+	}
+
+	if (_monitor_out && _engine.monitor_port().monitoring ()) {
+		return true;
+	}
+
+	return false;
 }
 
 void

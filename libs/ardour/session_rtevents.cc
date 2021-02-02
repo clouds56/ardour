@@ -119,6 +119,9 @@ Session::prepare_exclusive_solo (boost::shared_ptr<RouteList> soloed, boost::sha
 	if (soloed) {
 		soloed.swap (rl);
 	}
+
+	/* unset any input monitors */
+	_engine.monitor_port().clear_ports (false);
 }
 
 void

@@ -925,7 +925,7 @@ public:
 	std::vector<boost::weak_ptr<AutomationControl> > cancel_all_mute ();
 
 	bool soloing() const { return _non_soloed_outs_muted; }
-	bool listening() const { return _listen_cnt > 0; }
+	bool listening() const;
 	bool solo_isolated() const { return _solo_isolated_cnt > 0; }
 	void cancel_all_solo ();
 
