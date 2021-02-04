@@ -668,34 +668,11 @@ RouteUI::solo_press(GdkEventButton* ev)
 					_solo_release->routes_on.reset (new RouteList);
 					_solo_release->routes_off.reset (new RouteList);
 
-					boost::shared_ptr<RouteList> routes = _session->get_routes();
-					for (RouteList::const_iterator i = routes->begin(); i != routes->end(); ++i) {
-#ifdef MIXBUS
-						if ((0 == _route->mixbus()) != (0 == (*i)->mixbus ())) {
-							continue;
-						}
-#endif
-						if ((*i)->soloed ()) {
-							_solo_release->routes_on->push_back (*i);
-						} else {
-							_solo_release->routes_off->push_back (*i);
-						}
-					}
+					_session->prepare_exclusive_solo (_solo_release->routes_on, _solo_release->routes_off);
+				} else {
+					/* clear solo state */
+					_session->prepare_exclusive_solo ();
 				}
-
-				boost::shared_ptr<RouteList> rl (new RouteList);
-				boost::shared_ptr<RouteList> routes = _session->get_routes();
-				for (RouteList::const_iterator i = routes->begin(); i != routes->end(); ++i) {
-#ifdef MIXBUS
-					if ((0 == _route->mixbus()) != (0 == (*i)->mixbus ())) {
-						continue;
-					}
-#endif
-					if ((*i)->soloed ()) {
-						rl->push_back (*i);
-					}
-				}
-				_session->set_controls (route_list_to_control_list (rl, &Stripable::solo_control), false, Controllable::UseGroup);
 
 				if (Config->get_solo_control_is_listen_control()) {
 					/* ??? we need a just_one_listen() method */
