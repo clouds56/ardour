@@ -24,6 +24,7 @@
 #include "gtkmm2ext/cairo_widget.h"
 
 #include "ardour/circular_buffer.h"
+#include "ardour/session_handle.h"
 
 namespace ArdourWidgets
 {
