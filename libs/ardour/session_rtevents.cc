@@ -23,6 +23,7 @@
 #include "pbd/error.h"
 #include "pbd/compose.h"
 
+#include "ardour/audioengine.h"
 #include "ardour/monitor_control.h"
 #include "ardour/route.h"
 #include "ardour/session.h"
@@ -87,6 +88,36 @@ Session::rt_set_controls (boost::shared_ptr<ControlList> cl, double val, Control
 		break;
 	default:
 		break;
+	}
+}
+
+void
+Session::prepare_exclusive_solo (boost::shared_ptr<RouteList> soloed, boost::shared_ptr<RouteList> unsoloed)
+{
+	if (unsoloed) {
+		unsoloed->clear ();
+	}
+
+	boost::shared_ptr<RouteList> rl (new RouteList);
+	boost::shared_ptr<RouteList> routes = get_routes();
+
+	for (RouteList::const_iterator i = routes->begin(); i != routes->end(); ++i) {
+#ifdef MIXBUS
+		if ((0 == _route->mixbus()) != (0 == (*i)->mixbus ())) {
+			continue;
+		}
+#endif
+		if ((*i)->soloed ()) {
+			rl->push_back (*i);
+		} else if (unsoloed) {
+			unsoloed->push_back (*i);
+		}
+	}
+
+	set_controls (route_list_to_control_list (rl, &Stripable::solo_control), false, Controllable::UseGroup);
+
+	if (soloed) {
+		soloed.swap (rl);
 	}
 }
 

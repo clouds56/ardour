@@ -936,6 +936,8 @@ public:
 
 	void clear_all_solo_state (boost::shared_ptr<RouteList>);
 
+	void prepare_exclusive_solo (boost::shared_ptr<RouteList> soloed = boost::shared_ptr<RouteList>(), boost::shared_ptr<RouteList> unsoloed = boost::shared_ptr<RouteList>());
+
 	/* Control-based methods */
 
 	void set_controls (boost::shared_ptr<ControlList>, double val, PBD::Controllable::GroupControlDisposition);
